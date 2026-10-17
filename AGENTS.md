@@ -12,3 +12,5 @@
 ## Application structure
 
 - Build the canteen experience as TanStack file routes with a shared React app shell, because this workspace supports TanStack Start rather than Angular.
+- Keep cross-route wishlist state in a context mounted above the root outlet, so the dashboard and Bucket always show the same saved items.
+- Keep app-wide theme state in a provider mounted above the root outlet, so the settings choice affects every route and persists consistently.

@@ -1,21 +1,29 @@
-import { useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { useMemo, useState, type FormEvent } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import {
   Check,
+  Cookie,
+  CupSoda,
   ChevronRight,
   Grid2X2,
   Heart,
   Mail,
   Minus,
   Plus,
+  Pizza,
+  Popcorn,
   Search,
   Settings2,
+  Sandwich,
   ShoppingBag,
   Trash2,
   UserRound,
   Wallet,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
+import { useWishlist } from "@/lib/wishlist";
+import { useTheme } from "@/lib/theme";
 import bucketEmpty from "@/assets/bucket-empty.png";
 import canteenWelcome from "@/assets/canteen-welcome.png";
 import loginIllustration from "@/assets/login-illustration.png";
@@ -47,11 +55,11 @@ const dishes = [
 ];
 
 const categories = [
-  { name: "Menu1", symbol: "🍔" },
-  { name: "Menu2", symbol: "🍟" },
-  { name: "Menu3", symbol: "🍕" },
-  { name: "Menu4", symbol: "🥤" },
-  { name: "Menu5", symbol: "🧀" },
+  { name: "Menu1", Icon: Sandwich },
+  { name: "Menu2", Icon: Popcorn },
+  { name: "Menu3", Icon: Pizza },
+  { name: "Menu4", Icon: CupSoda },
+  { name: "Menu5", Icon: Cookie },
 ];
 
 export function LoginScreen() {
@@ -105,16 +113,15 @@ export function LoginScreen() {
 }
 
 export function CanteenScreen({ screen }: { screen: Screen }) {
+  const navigate = useNavigate();
   const [orders, setOrders] = useState(initialOrders);
   const [category, setCategory] = useState("Menu1");
-  const [favorites, setFavorites] = useState<string[]>(["Dish 01"]);
+  const { items: wishlist, toggleItem: toggleWishlist } = useWishlist();
+  const { theme, setTheme } = useTheme();
   const [search, setSearch] = useState("");
   const [ordered, setOrdered] = useState(false);
-  const [dark, setDark] = useState(false);
   const [notifications, setNotifications] = useState(true);
   const [faq, setFaq] = useState(0);
-  const [supportMessage, setSupportMessage] = useState("");
-  const [supportSent, setSupportSent] = useState(false);
   const [feedback, setFeedback] = useState("");
 
   const total = useMemo(() => orders.reduce((sum, item) => sum + item.price * item.quantity, 0), [orders]);
@@ -133,25 +140,25 @@ export function CanteenScreen({ screen }: { screen: Screen }) {
   }
 
   return (
-    <main className={`canteen-app${dark ? " is-dark" : ""}`}>
+    <main className={`canteen-app${screen === "Support" ? " support-layout" : ""}${screen === "Bills" ? " bills-layout" : ""}`}>
       <Sidebar active={screen} />
       {screen === "Support" ? (
-        <SupportPage faq={faq} setFaq={setFaq} message={supportMessage} setMessage={setSupportMessage} sent={supportSent} send={() => { if (supportMessage.trim()) { setSupportSent(true); setSupportMessage(""); } }} />
+        <SupportPage faq={faq} setFaq={setFaq} />
       ) : screen === "Bills" ? (
         <BillsPage />
       ) : (
         <>
           <section className="main-column">
             <SearchBar value={search} onChange={setSearch} />
-            {screen === "Bucket" ? <BucketEmpty /> : <>
+            {screen === "Bucket" ? <WishlistBucket items={dishes.filter((dish) => wishlist.includes(dish.name) && dish.name.toLowerCase().includes(search.toLowerCase()))} onRemove={toggleWishlist} /> : <>
               <WelcomePanel />
               <div className="section-heading"><h2>Menu Category</h2><button type="button" className="view-all" onClick={() => setCategory("Menu1")}>View All <span><ChevronRight size={16} /></span></button></div>
-              <div className="category-list">{categories.map((item) => <button key={item.name} type="button" className={`category-tile${category === item.name ? " selected" : ""}`} onClick={() => setCategory(item.name)}><span className="category-emoji">{item.symbol}</span><span>{item.name}</span><span className="round-arrow"><ChevronRight size={16} /></span></button>)}</div>
-              <div className="dish-list">{filteredDishes.map((dish) => <article className="dish-card" key={dish.name}><button aria-label={`${favorites.includes(dish.name) ? "Remove" : "Add"} ${dish.name} from favourites`} className={`favorite-toggle${favorites.includes(dish.name) ? " is-favorite" : ""}`} type="button" onClick={() => setFavorites((items) => items.includes(dish.name) ? items.filter((item) => item !== dish.name) : [...items, dish.name])}><Heart size={16} fill="currentColor" /></button><div className="dish-placeholder" /><div className="dish-details"><span>{dish.name}</span><span className="dish-rating">{dish.rating}</span><strong><i>₹</i>{dish.price}</strong></div><Button aria-label={`Add ${dish.name} to orders`} size="icon" className="dish-add" onClick={() => updateOrder(dish.name, 1)}><Plus size={22} /></Button></article>)}</div>
+              <div className="category-list">{categories.map((item) => <button key={item.name} type="button" className={`category-tile${category === item.name ? " selected" : ""}`} onClick={() => setCategory(item.name)}><span className="category-emoji"><item.Icon size={38} strokeWidth={1.7} /></span><span>{item.name}</span><span className="round-arrow"><ChevronRight size={16} /></span></button>)}</div>
+              <div className="dish-list">{filteredDishes.map((dish) => <article className="dish-card" key={dish.name}><button aria-label={`${wishlist.includes(dish.name) ? "Remove" : "Add"} ${dish.name} from Wishlist`} className={`favorite-toggle${wishlist.includes(dish.name) ? " is-favorite" : ""}`} type="button" onClick={() => { const adding = !wishlist.includes(dish.name); toggleWishlist(dish.name); if (adding) toast.success("Added to Wishlist and Bucket List"); }}><Heart size={16} fill="currentColor" /></button><div className="dish-placeholder" /><div className="dish-details"><span>{dish.name}</span><span className="dish-rating">{dish.rating}</span><strong><i>₹</i>{dish.price}</strong></div><Button aria-label={`Add ${dish.name} to orders`} size="icon" className="dish-add" onClick={() => updateOrder(dish.name, 1)}><Plus size={22} /></Button></article>)}</div>
             </>}
           </section>
           <aside className="utility-column">
-            {screen === "Profile" ? <ProfilePanel onSave={() => setFeedback("Profile saved")} feedback={feedback} /> : screen === "Settings" ? <SettingsPanel notifications={notifications} setNotifications={setNotifications} dark={dark} setDark={setDark} feedback={feedback} onUpdate={() => setFeedback("Password updated")} onLogout={() => setFeedback("You are logged out")} /> : screen === "Notifications" ? <NotificationsPage /> : <OrderPanel orders={orders} total={total} updateOrder={updateOrder} ordered={ordered} placeOrder={() => { if (orders.length) { setOrdered(true); } }} />}
+            {screen === "Profile" ? <ProfilePanel onSave={() => setFeedback("Profile saved")} feedback={feedback} /> : screen === "Settings" ? <SettingsPanel notifications={notifications} setNotifications={setNotifications} theme={theme} setTheme={setTheme} feedback={feedback} onUpdate={() => setFeedback("Password updated")} onLogout={() => void navigate({ to: "/login" })} /> : screen === "Notifications" ? <NotificationsPage /> : <OrderPanel orders={orders} total={total} updateOrder={updateOrder} ordered={ordered} showDateTime={screen !== "Bucket"} placeOrder={() => { if (orders.length) { setOrdered(true); } }} />}
           </aside>
         </>
       )}
@@ -180,20 +187,57 @@ function WelcomePanel() {
   return <section className="welcome-panel"><img src={canteenWelcome} alt="A woman greeting you" /><div className="welcome-copy"><h1>Hello Tony,</h1><p>Lorem ipsum dolor sit amet, cotetur adipiscing elit.</p><Button className="coral-button" size="sm">Learn more</Button></div></section>;
 }
 
-function BucketEmpty() {
-  return <div className="bucket-empty-copy"><img src={bucketEmpty} alt="A person packing a box" /><p>You haven’t marked any favourites yet.</p></div>;
+function WishlistBucket({ items, onRemove }: { items: typeof dishes; onRemove: (name: string) => void }) {
+  if (items.length === 0) {
+    return <div className="bucket-empty-copy"><img src={bucketEmpty} alt="A person packing a box" /><p>You haven’t marked any favourites yet.</p></div>;
+  }
+
+  return (
+    <section className="wishlist-bucket" aria-label="Wishlist items in your bucket list">
+      <h1>Bucket List</h1>
+      <div className="wishlist-bucket-list">
+        {items.map((dish) => (
+          <article className="wishlist-bucket-item" key={dish.name}>
+            <div className="wishlist-bucket-copy"><strong>{dish.name}</strong><span><i>₹</i>{dish.price}</span></div>
+            <Button aria-label={`Remove ${dish.name} from Wishlist and Bucket List`} variant="ghost" size="icon" className="wishlist-remove" onClick={() => onRemove(dish.name)}><Heart size={19} fill="currentColor" /></Button>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
 }
 
-function OrderPanel({ orders, total, updateOrder, ordered, placeOrder }: { orders: Order[]; total: number; updateOrder: (name: string, change: number) => void; ordered: boolean; placeOrder: () => void }) {
-  return <div className="orders-panel"><h1>Your Orders</h1><div className="order-datetime"><label>Date<input type="date" defaultValue="2022-04-08" /></label><label>Time<input type="time" defaultValue="09:00" /></label></div><div className="order-list">{orders.map((item) => <div className="order-row" key={item.name}><div><span>{item.name}</span><small>Rs. {item.price}</small></div><div className="order-controls"><Button aria-label={`Increase ${item.name}`} size="icon" className="qty-button" onClick={() => updateOrder(item.name, 1)}><Plus size={13} /></Button><span>{item.quantity}</span><Button aria-label={`Decrease ${item.name}`} size="icon" className="qty-button" onClick={() => updateOrder(item.name, -1)}><Minus size={13} /></Button><Button aria-label={`Remove ${item.name}`} size="icon" className="remove-button" onClick={() => updateOrder(item.name, -item.quantity)}><Trash2 size={13} /></Button></div></div>)}</div><div className="grand-total"><span>Grand Total</span><span>Rs. {total}</span></div>{ordered && <p className="order-confirmation" role="status"><Check size={16} /> Order placed</p>}<Button className="place-order" onClick={placeOrder}>Place Order <ChevronRight size={22} strokeWidth={3} /></Button></div>;
+function OrderPanel({ orders, total, updateOrder, ordered, showDateTime, placeOrder }: { orders: Order[]; total: number; updateOrder: (name: string, change: number) => void; ordered: boolean; showDateTime: boolean; placeOrder: () => void }) {
+  return (
+    <div className="orders-panel">
+      <h1>Your Orders</h1>
+      {showDateTime && <div className="order-datetime"><label>Date<input type="date" defaultValue="2022-04-08" /></label><label>Time<input type="time" defaultValue="09:00" /></label></div>}
+      <div className="order-list">
+        {orders.map((item) => (
+          <div className="order-row" key={item.name}>
+            <div><span>{item.name}</span><small>Rs. {item.price}</small></div>
+            <div className="order-controls">
+              <Button aria-label={`Increase ${item.name}`} size="icon" className="qty-button" onClick={() => updateOrder(item.name, 1)}><Plus size={13} /></Button>
+              <span>{item.quantity}</span>
+              <Button aria-label={`Decrease ${item.name}`} size="icon" className="qty-button" onClick={() => updateOrder(item.name, -1)}><Minus size={13} /></Button>
+              <Button aria-label={`Remove ${item.name}`} size="icon" className="remove-button" onClick={() => updateOrder(item.name, -item.quantity)}><Trash2 size={13} /></Button>
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="grand-total"><span>Grand Total</span><span>Rs. {total}</span></div>
+      {ordered && <p className="order-confirmation" role="status"><Check size={16} /> Order placed</p>}
+      <Button className="place-order" onClick={placeOrder}>Place Order <ChevronRight size={22} strokeWidth={3} /></Button>
+    </div>
+  );
 }
 
 function ProfilePanel({ onSave, feedback }: { onSave: () => void; feedback: string }) {
   return <div className="profile-panel"><h1>Profile</h1><div className="profile-photo"><img src={profileAvatar} alt="Tony Stark" /><button aria-label="Change profile photo" type="button"><span>▣</span></button></div><p className="profile-email">tonystark@gmail.com</p><form className="profile-fields" onSubmit={(event) => { event.preventDefault(); onSave(); }}><label>First Name<input defaultValue="Tony" /></label><label>Last Name<input defaultValue="Stark" /></label><label>Date of Birth<select defaultValue="04 March 1977"><option>04 March 1977</option><option>04 March 1978</option></select></label><label>Designation<select defaultValue="Teacher"><option>Teacher</option><option>Student</option></select></label><Button className="coral-button profile-save">Save Profile</Button>{feedback && <small role="status">{feedback}</small>}</form></div>;
 }
 
-function SettingsPanel({ notifications, setNotifications, dark, setDark, feedback, onUpdate, onLogout }: { notifications: boolean; setNotifications: (value: boolean) => void; dark: boolean; setDark: (value: boolean) => void; feedback: string; onUpdate: () => void; onLogout: () => void }) {
-  return <div className="settings-panel"><h1>Settings</h1><fieldset><legend>Notification</legend><RadioOption name="notifications" label="On" checked={notifications} onChange={() => setNotifications(true)} /><RadioOption name="notifications" label="Off" checked={!notifications} onChange={() => setNotifications(false)} /></fieldset><fieldset><legend>Theme</legend><RadioOption name="theme" label="Light" checked={!dark} onChange={() => setDark(false)} /><RadioOption name="theme" label="Dark" checked={dark} onChange={() => setDark(true)} /></fieldset><form className="password-form" onSubmit={(event) => { event.preventDefault(); onUpdate(); }}><h2>Change Password</h2><label>Current Password<input type="password" /></label><label>New Password<input type="password" /></label><label>Confirm New Password<input type="password" /></label><Button className="update-password">Update Password</Button>{feedback && <small role="status">{feedback}</small>}</form><button type="button" className="feedback-link" onClick={() => window.alert("Feedback")}>Feedback</button><button type="button" className="logout-link" onClick={onLogout}>Logout</button></div>;
+function SettingsPanel({ notifications, setNotifications, theme, setTheme, feedback, onUpdate, onLogout }: { notifications: boolean; setNotifications: (value: boolean) => void; theme: "light" | "dark"; setTheme: (value: "light" | "dark") => void; feedback: string; onUpdate: () => void; onLogout: () => void }) {
+  return <div className="settings-panel"><h1>Settings</h1><fieldset><legend>Notification</legend><RadioOption name="notifications" label="On" checked={notifications} onChange={() => setNotifications(true)} /><RadioOption name="notifications" label="Off" checked={!notifications} onChange={() => setNotifications(false)} /></fieldset><fieldset><legend>Theme</legend><RadioOption name="theme" label="Light" checked={theme === "light"} onChange={() => setTheme("light")} /><RadioOption name="theme" label="Dark" checked={theme === "dark"} onChange={() => setTheme("dark")} /></fieldset><form className="password-form" onSubmit={(event) => { event.preventDefault(); onUpdate(); }}><h2>Change Password</h2><label>Current Password<input type="password" /></label><label>New Password<input type="password" /></label><label>Confirm New Password<input type="password" /></label><Button className="update-password">Update Password</Button>{feedback && <small role="status">{feedback}</small>}</form><p className="feedback-link">Feedback</p><button type="button" className="logout-link" onClick={onLogout}>Logout</button></div>;
 }
 
 function RadioOption({ name, label, checked, onChange }: { name: string; label: string; checked: boolean; onChange: () => void }) {
@@ -212,8 +256,22 @@ function BillsPage() {
 
 const faqs = ["Can I cancel my order at any time ?", "Can I show screenshot of receipt ?", "I am unable to change password", "I have payment or refund related query", "I have a query related to placing an order"];
 
-function SupportPage({ faq, setFaq, message, setMessage, sent, send }: { faq: number; setFaq: (value: number) => void; message: string; setMessage: (value: string) => void; sent: boolean; send: () => void }) {
-  return <section className="support-page"><div className="support-content"><div className="support-intro"><h1>How can we help you ?</h1><p>If you cannot find answer to your question in our FAQ, you can always contact us.<br />We will answer to you shortly!</p></div><form className="support-form" onSubmit={(event) => { event.preventDefault(); send(); }}><textarea placeholder="Write a question or problem" value={message} onChange={(event) => setMessage(event.target.value)} /><Button className="coral-button support-send">Send</Button>{sent && <small role="status">Message sent</small>}</form><h2>Frequently asked questions</h2><div className="faq-list">{faqs.map((question, index) => <button className={`faq-item${faq === index ? " open" : ""}`} key={question} type="button" onClick={() => setFaq(faq === index ? -1 : index)}><span className="faq-question">{question}<span>{faq === index ? "−" : "+"}</span></span>{faq === index && <small>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Mattis pulvinar nisi sit lacinia congue sem fermentum lacus, faucibus. Vel mi nibh semper rutrum semper facilisi sed. Id eget massa in nulla mus et sed.</small>}</button>)}</div></div></section>;
-}
+function SupportPage({ faq, setFaq }: { faq: number; setFaq: (value: number) => void }) {
+  const [message, setMessage] = useState("");
+  const [sent, setSent] = useState(false);
 
-export function ScreenTitle({ children }: { children: ReactNode }) { return <h1>{children}</h1>; }
+  return (
+    <section className="support-page">
+      <div className="support-content">
+        <div className="support-intro"><h1>How can we help you ?</h1><p>If you cannot find answer to your question in our FAQ, you can always contact us.<br />We will answer to you shortly!</p></div>
+        <form className="support-form" onSubmit={(event) => { event.preventDefault(); if (message.trim()) { setSent(true); setMessage(""); } }}>
+          <textarea placeholder="Write a question or problem" value={message} onChange={(event) => { setMessage(event.target.value); setSent(false); }} />
+          <Button type="submit" className="coral-button support-send">Send</Button>
+          {sent && <small role="status">Message sent</small>}
+        </form>
+        <h2>Frequently asked questions</h2>
+        <div className="faq-list">{faqs.map((question, index) => <button className={`faq-item${faq === index ? " open" : ""}`} key={question} type="button" onClick={() => setFaq(faq === index ? -1 : index)}><span className="faq-question">{question}<span>{faq === index ? "−" : "+"}</span></span>{faq === index && <small>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Mattis pulvinar nisi sit lacinia congue sem fermentum lacus, faucibus. Vel mi nibh semper rutrum semper facilisi sed. Id eget massa in nulla mus et sed.</small>}</button>)}</div>
+      </div>
+    </section>
+  );
+}
