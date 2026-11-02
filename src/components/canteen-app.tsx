@@ -1,3 +1,4 @@
+import { login, register, saveSession, clearSession } from "@/lib/api";
 import { useMemo, useState, type FormEvent } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import {
@@ -23,6 +24,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { useWishlist } from "@/lib/wishlist";
+import { ALL_CATEGORIES, cartTotal, dishes, filterDishes, menuCategories, priceOf, type MenuCategory } from "@/lib/menu";
 import { useTheme } from "@/lib/theme";
 import bucketEmpty from "@/assets/bucket-empty.png";
 import canteenWelcome from "@/assets/canteen-welcome.png";
@@ -34,7 +36,7 @@ type Screen = "Dashboard" | "Bucket" | "Bills" | "Settings" | "Notifications" | 
 type Order = { name: string; price: number; quantity: number };
 
 const initialOrders: Order[] = [
-  { name: "Sandwitch", price: 50, quantity: 1 },
+  { name: "Veg Sandwich", price: 50, quantity: 1 },
   { name: "Appy Fizz", price: 10, quantity: 2 },
   { name: "Bourbon Biscuit", price: 10, quantity: 2 },
 ];
@@ -48,32 +50,47 @@ const navigation: { label: Screen; href: "/" | "/bucket" | "/bills" | "/settings
   { label: "Support", href: "/support", icon: UserRound },
 ];
 
-const dishes = [
-  { name: "Dish 01", price: 50, rating: "★★★★☆" },
-  { name: "Dish 02", price: 20, rating: "★★★☆☆" },
-  { name: "Dish 03", price: 10, rating: "★★★☆☆" },
-];
-
-const categories = [
-  { name: "Menu1", Icon: Sandwich },
-  { name: "Menu2", Icon: Popcorn },
-  { name: "Menu3", Icon: Pizza },
-  { name: "Menu4", Icon: CupSoda },
-  { name: "Menu5", Icon: Cookie },
-];
+const categoryIcons: Record<MenuCategory, typeof Sandwich> = {
+  Sandwiches: Sandwich,
+  Snacks: Popcorn,
+  "Fast Food": Pizza,
+  Beverages: CupSoda,
+  "Biscuits & Cookies": Cookie,
+};
+const categories = menuCategories.map((name) => ({ name, Icon: categoryIcons[name] }));
 
 export function LoginScreen() {
   const navigate = useNavigate();
   const [signUp, setSignUp] = useState(false);
   const [message, setMessage] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  function submit(event: FormEvent<HTMLFormElement>) {
+  async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (signUp) {
-      setMessage("Your account details are ready.");
-      return;
+    const form = event.currentTarget;
+    const data = new FormData(form);
+    const fullName = String(data.get("fullName") ?? "").trim();
+    const username = String(data.get("username") ?? "").trim();
+    const password = String(data.get("password") ?? "");
+
+    setLoading(true);
+    setMessage("");
+    try {
+      if (signUp) {
+        await register(fullName, username, password);
+        form.reset();
+        setSignUp(false);
+        setMessage("Account created. Please log in.");
+      } else {
+        const result = await login(username, password);
+        saveSession(result);
+        await navigate({ to: "/" });
+      }
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Something went wrong");
+    } finally {
+      setLoading(false);
     }
-    void navigate({ to: "/" });
   }
 
   return (
@@ -84,10 +101,12 @@ export function LoginScreen() {
           <Brand className="login-brand" />
           <p className="login-subtitle">Login to make your order.</p>
           <form className="login-form" onSubmit={submit}>
-            {signUp && <input required aria-label="Full name" placeholder="Full Name" />}
-            <input required autoComplete="username" aria-label="Username" placeholder="Username" />
-            <input required type="password" autoComplete={signUp ? "new-password" : "current-password"} aria-label="Password" placeholder="Password" />
-            <Button className="login-submit" type="submit">{signUp ? "SIGN UP" : "LOG IN"}</Button>
+            {signUp && <input required name="fullName" aria-label="Full name" placeholder="Full Name" />}
+            <input required name="username" autoComplete="username" aria-label="Username" placeholder="Username" />
+            <input required name="password" type="password" minLength={signUp ? 6 : undefined} autoComplete={signUp ? "new-password" : "current-password"} aria-label="Password" placeholder="Password" />
+            <Button className="login-submit" type="submit" disabled={loading}>
+              {loading ? "PLEASE WAIT..." : signUp ? "SIGN UP" : "LOG IN"}
+            </Button>
           </form>
           <p className="signup-prompt">
             {signUp ? "Already have an account ? " : "Don’t have an account ? "}
@@ -115,7 +134,7 @@ export function LoginScreen() {
 export function CanteenScreen({ screen }: { screen: Screen }) {
   const navigate = useNavigate();
   const [orders, setOrders] = useState(initialOrders);
-  const [category, setCategory] = useState("Menu1");
+  const [category, setCategory] = useState<string>(ALL_CATEGORIES);
   const { items: wishlist, toggleItem: toggleWishlist } = useWishlist();
   const { theme, setTheme } = useTheme();
   const [search, setSearch] = useState("");
@@ -124,13 +143,13 @@ export function CanteenScreen({ screen }: { screen: Screen }) {
   const [faq, setFaq] = useState(0);
   const [feedback, setFeedback] = useState("");
 
-  const total = useMemo(() => orders.reduce((sum, item) => sum + item.price * item.quantity, 0), [orders]);
-  const filteredDishes = dishes.filter((dish) => dish.name.toLowerCase().includes(search.toLowerCase()));
+  const total = useMemo(() => cartTotal(orders), [orders]);
+  const filteredDishes = filterDishes(category, search);
 
   function updateOrder(name: string, change: number) {
     setOrders((previous) => {
       const existing = previous.find((item) => item.name === name);
-      if (!existing && change > 0) return [...previous, { name, price: dishes.find((item) => item.name === name)?.price ?? 10, quantity: 1 }];
+      if (!existing && change > 0) return [...previous, { name, price: priceOf(name), quantity: 1 }];
       return previous.flatMap((item) => {
         if (item.name !== name) return [item];
         const quantity = item.quantity + change;
@@ -149,16 +168,17 @@ export function CanteenScreen({ screen }: { screen: Screen }) {
       ) : (
         <>
           <section className="main-column">
+            <Brand className="mobile-brand" />
             <SearchBar value={search} onChange={setSearch} />
             {screen === "Bucket" ? <WishlistBucket items={dishes.filter((dish) => wishlist.includes(dish.name) && dish.name.toLowerCase().includes(search.toLowerCase()))} onRemove={toggleWishlist} /> : <>
               <WelcomePanel />
-              <div className="section-heading"><h2>Menu Category</h2><button type="button" className="view-all" onClick={() => setCategory("Menu1")}>View All <span><ChevronRight size={16} /></span></button></div>
-              <div className="category-list">{categories.map((item) => <button key={item.name} type="button" className={`category-tile${category === item.name ? " selected" : ""}`} onClick={() => setCategory(item.name)}><span className="category-emoji"><item.Icon size={38} strokeWidth={1.7} /></span><span>{item.name}</span><span className="round-arrow"><ChevronRight size={16} /></span></button>)}</div>
-              <div className="dish-list">{filteredDishes.map((dish) => <article className="dish-card" key={dish.name}><button aria-label={`${wishlist.includes(dish.name) ? "Remove" : "Add"} ${dish.name} from Wishlist`} className={`favorite-toggle${wishlist.includes(dish.name) ? " is-favorite" : ""}`} type="button" onClick={() => { const adding = !wishlist.includes(dish.name); toggleWishlist(dish.name); if (adding) toast.success("Added to Wishlist and Bucket List"); }}><Heart size={16} fill="currentColor" /></button><div className="dish-placeholder" /><div className="dish-details"><span>{dish.name}</span><span className="dish-rating">{dish.rating}</span><strong><i>₹</i>{dish.price}</strong></div><Button aria-label={`Add ${dish.name} to orders`} size="icon" className="dish-add" onClick={() => updateOrder(dish.name, 1)}><Plus size={22} /></Button></article>)}</div>
+              <div className="section-heading"><h2>Menu Category</h2><button type="button" className="view-all" onClick={() => setCategory(ALL_CATEGORIES)}>View All <span><ChevronRight size={16} /></span></button></div>
+              <div className="category-list">{categories.map((item) => <button key={item.name} type="button" className={`category-tile${category === item.name ? " selected" : ""}`} aria-pressed={category === item.name} onClick={() => setCategory(category === item.name ? ALL_CATEGORIES : item.name)}><span className="category-emoji"><item.Icon size={38} strokeWidth={1.7} /></span><span>{item.name}</span><span className="round-arrow"><ChevronRight size={16} /></span></button>)}</div>
+              <div className="dish-list">{filteredDishes.map((dish) => <article className="dish-card" key={dish.name}><button aria-label={`${wishlist.includes(dish.name) ? "Remove" : "Add"} ${dish.name} from Wishlist`} className={`favorite-toggle${wishlist.includes(dish.name) ? " is-favorite" : ""}`} type="button" onClick={() => { const adding = !wishlist.includes(dish.name); toggleWishlist(dish.name); if (adding) toast.success("Added to Wishlist and Bucket List"); }}><Heart size={16} fill="currentColor" /></button><img className="dish-photo" src={dish.image} alt={dish.name} loading="lazy" decoding="async" /><div className="dish-details"><span>{dish.name}</span><span className="dish-rating">{dish.rating}</span><strong><i>₹</i>{dish.price}</strong></div><Button aria-label={`Add ${dish.name} to orders`} size="icon" className="dish-add" onClick={() => updateOrder(dish.name, 1)}><Plus size={22} /></Button></article>)}</div>
             </>}
           </section>
           <aside className="utility-column">
-            {screen === "Profile" ? <ProfilePanel onSave={() => setFeedback("Profile saved")} feedback={feedback} /> : screen === "Settings" ? <SettingsPanel notifications={notifications} setNotifications={setNotifications} theme={theme} setTheme={setTheme} feedback={feedback} onUpdate={() => setFeedback("Password updated")} onLogout={() => void navigate({ to: "/login" })} /> : screen === "Notifications" ? <NotificationsPage /> : <OrderPanel orders={orders} total={total} updateOrder={updateOrder} ordered={ordered} showDateTime={screen !== "Bucket"} placeOrder={() => { if (orders.length) { setOrdered(true); } }} />}
+            {screen === "Profile" ? <ProfilePanel onSave={() => setFeedback("Profile saved")} feedback={feedback} /> : screen === "Settings" ? <SettingsPanel notifications={notifications} setNotifications={setNotifications} theme={theme} setTheme={setTheme} feedback={feedback} onUpdate={() => setFeedback("Password updated")} onLogout={() => { clearSession(); void navigate({ to: "/login" }); }} /> : screen === "Notifications" ? <NotificationsPage /> : <OrderPanel orders={orders} total={total} updateOrder={updateOrder} ordered={ordered} showDateTime={screen !== "Bucket"} placeOrder={() => { if (orders.length) { setOrdered(true); } }} />}
           </aside>
         </>
       )}
@@ -198,7 +218,7 @@ function WishlistBucket({ items, onRemove }: { items: typeof dishes; onRemove: (
       <div className="wishlist-bucket-list">
         {items.map((dish) => (
           <article className="wishlist-bucket-item" key={dish.name}>
-            <div className="wishlist-bucket-copy"><strong>{dish.name}</strong><span><i>₹</i>{dish.price}</span></div>
+            <img className="wishlist-bucket-photo" src={dish.image} alt="" loading="lazy" decoding="async" /><div className="wishlist-bucket-copy"><strong>{dish.name}</strong><span><i>₹</i>{dish.price}</span></div>
             <Button aria-label={`Remove ${dish.name} from Wishlist and Bucket List`} variant="ghost" size="icon" className="wishlist-remove" onClick={() => onRemove(dish.name)}><Heart size={19} fill="currentColor" /></Button>
           </article>
         ))}
